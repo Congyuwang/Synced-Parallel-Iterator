@@ -8,7 +8,7 @@ Consider the case where multiple threads share a cache which can be read
 only after prior tasks have written to it (e.g., reads of task 4 depends
 on writes of task 1-4).
 
-Using `IntoParallelIteratorSynced` trait
+Using `IntoParallelIteratorSync` trait
 ```rust
 // in concurrency: task1 write | task2 write | task3 write | task4 write
 //                      \_____________\_____________\_____________\
@@ -16,7 +16,7 @@ Using `IntoParallelIteratorSynced` trait
 //                                                               \
 // in concurrency:              | task2 read  | task3 read  | task4 read
 
-use par_iter_sync::IntoParallelIteratorSynced;
+use par_iter_sync::IntoParallelIteratorSync;
 use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
 
@@ -52,7 +52,7 @@ but the execution order is not sequential.
 
 ### Mix Syncing and Parallelism By Chaining
 ```rust
-use par_iter_sync::IntoParallelIteratorSynced;
+use par_iter_sync::IntoParallelIteratorSync;
 
 (0..100).into_par_iter_sync(|i| {
     Ok(i)                     // <~ async execution
@@ -65,7 +65,7 @@ use par_iter_sync::IntoParallelIteratorSynced;
 
 ### Use `std::iter::IntoIterator` interface
 ```rust
-use par_iter_sync::IntoParallelIteratorSynced;
+use par_iter_sync::IntoParallelIteratorSync;
 
 let mut count = 0;
 
@@ -88,7 +88,7 @@ assert_eq!(results, vec![0, 1, 2, 3, 4])
 ### Closure Captures Variables
 Variables captured are cloned to each threads automatically.
 ```rust
-use par_iter_sync::IntoParallelIteratorSynced;
+use par_iter_sync::IntoParallelIteratorSync;
 use std::sync::Arc;
 
 // use `Arc` to save RAM
@@ -110,7 +110,7 @@ assert_eq!(collected, vec![3, 1, 4, 1, 5, 9, 2, 6, 5, 3])
 ### Fast Fail During Exception
 The iterator stops once the inner function returns an `Err`.
 ```rust
-use par_iter_sync::IntoParallelIteratorSynced;
+use par_iter_sync::IntoParallelIteratorSync;
 use std::sync::Arc;
 use log::warn;
 
@@ -141,7 +141,7 @@ assert_eq!(results, expected)
 #### You may choose to skip error
 If you do not want to stop on `Err`, this is a workaround.
 ```rust
-use par_iter_sync::IntoParallelIteratorSynced;
+use par_iter_sync::IntoParallelIteratorSync;
 use std::sync::Arc;
 
 let results: Vec<Result<i32, ()>> = (0..5).into_par_iter_sync(move |n| {

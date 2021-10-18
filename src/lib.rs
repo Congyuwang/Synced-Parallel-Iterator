@@ -9,7 +9,7 @@
 //! only after prior tasks have written to it (e.g., reads of task 4 depends
 //! on writes of task 1-4).
 //!
-//! Using `IntoParallelIteratorSynced` trait
+//! Using `IntoParallelIteratorSync` trait
 //!```
 //! // in concurrency: task1 write | task2 write | task3 write | task4 write
 //! //                      \_____________\_____________\_____________\
@@ -17,7 +17,7 @@
 //! //                                                               \
 //! // in concurrency:              | task2 read  | task3 read  | task4 read
 //!
-//! use par_iter_sync::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSync;
 //! use std::sync::{Arc, Mutex};
 //! use std::collections::HashSet;
 //!
@@ -53,7 +53,7 @@
 //!
 //! ### Mix Syncing and Parallelism By Chaining
 //! ```
-//! use par_iter_sync::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSync;
 //!
 //! (0..100).into_par_iter_sync(|i| {
 //!     Ok(i)                     // <~ async execution
@@ -66,7 +66,7 @@
 //!
 //! ### Use `std::iter::IntoIterator` interface
 //! ```
-//! use par_iter_sync::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSync;
 //!
 //! let mut count = 0;
 //!
@@ -89,7 +89,7 @@
 //! ### Closure Captures Variables
 //! Variables captured are cloned to each threads automatically.
 //! ```
-//! use par_iter_sync::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSync;
 //! use std::sync::Arc;
 //!
 //! // use `Arc` to save RAM
@@ -111,7 +111,7 @@
 //! ### Fast Fail During Exception
 //! The iterator stops once the inner function returns an `Err`.
 //! ```
-//! use par_iter_sync::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSync;
 //! use std::sync::Arc;
 //! use log::warn;
 //!
@@ -142,7 +142,7 @@
 //! #### You may choose to skip error
 //! If you do not want to stop on `Err`, this is a workaround.
 //! ```
-//! use par_iter_sync::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSync;
 //! use std::sync::Arc;
 //!
 //! let results: Vec<Result<i32, ()>> = (0..5).into_par_iter_sync(move |n| {
@@ -192,7 +192,7 @@ use num_cpus;
 
 const MAX_SIZE_FOR_THREAD: usize = 10;
 
-pub trait IntoParallelIteratorSynced<R, T, TL, F>
+pub trait IntoParallelIteratorSync<R, T, TL, F>
     where
         F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
         T: Send,
@@ -215,7 +215,7 @@ pub trait IntoParallelIteratorSynced<R, T, TL, F>
     /// ## Example
     ///
     /// ```
-    /// use par_iter_sync::IntoParallelIteratorSynced;
+    /// use par_iter_sync::IntoParallelIteratorSync;
     ///
     /// let mut count = 0;
     ///
@@ -246,7 +246,7 @@ pub trait IntoParallelIteratorSynced<R, T, TL, F>
      fn into_par_iter_sync(self, func: F) -> ParIter<R>;
 }
 
-impl<R, T, TL, F> IntoParallelIteratorSynced<R, T, TL, F> for TL
+impl<R, T, TL, F> IntoParallelIteratorSync<R, T, TL, F> for TL
     where
         F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
         T: Send,
@@ -452,7 +452,7 @@ impl<R> Drop for ParIter<R> {
 
 #[cfg(test)]
 mod test_par_iter {
-    use crate::IntoParallelIteratorSynced;
+    use crate::IntoParallelIteratorSync;
 
     fn error_at_1000(test_vec: &Vec<i32>, a: i32) -> Result<i32, ()> {
         let n = test_vec.get(a as usize).unwrap().to_owned();
