@@ -1,4 +1,4 @@
-# par_iter_synced: Parallel Iterator With Output Sequential Consistency
+# par_iter_synced: Parallel Iterator With Sequential Output
 
 Crate like `rayon` do not offer synchronization mechanism.
 This crate provides easy mixture of parallelism and synchronization,
