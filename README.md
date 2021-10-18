@@ -41,7 +41,8 @@ tasks.into_par_iter_sync(move |task_number| {
     assert!(cache_clone.lock().unwrap().contains(&task_number));
     Ok(())
 
-});
+// append a for each to actually run the whole chain
+}).for_each(|_| ());
 ```
 
 ## Sequential Consistency

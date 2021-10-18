@@ -41,8 +41,8 @@
 //!     // reads
 //!     assert!(cache_clone.lock().unwrap().contains(&task_number));
 //!     Ok(())
-//!
-//! });
+//! // append a for each to actually run the whole chain
+//! }).for_each(|_| ());
 //!```
 //!
 //! ## Sequential Consistency
@@ -56,12 +56,12 @@
 //! use par_iter_sync::IntoParallelIteratorSync;
 //!
 //! (0..100).into_par_iter_sync(|i| {
-//!     Ok(i)                     // <~ async execution
+//!     Ok(i)                   // <~ async execution
 //! }).into_par_iter_sync(|i| { // <- sync order
-//!     Ok(i)                     // <~async execution
+//!     Ok(i)                   // <~async execution
 //! }).into_par_iter_sync(|i| { // <- sync order
-//!     Ok(i)                     // <~async execution
-//! });                           // <- sync order
+//!     Ok(i)                   // <~async execution
+//! }).for_each(|x| ());        // <- sync order
 //! ```
 //!
 //! ### Use `std::iter::IntoIterator` interface
