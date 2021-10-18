@@ -1,5 +1,5 @@
 //!
-//! # par_iter_synced: Parallel Iterator With Sequential Output
+//! # par_iter_sync: Parallel Iterator With Sequential Output
 //!
 //! Crate like `rayon` do not offer synchronization mechanism.
 //! This crate provides easy mixture of parallelism and synchronization.
@@ -17,7 +17,7 @@
 //! //                                                               \
 //! // in concurrency:              | task2 read  | task3 read  | task4 read
 //!
-//! use par_iter_synced::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSynced;
 //! use std::sync::{Arc, Mutex};
 //! use std::collections::HashSet;
 //!
@@ -29,14 +29,14 @@
 //! let cache_clone = cache.clone();
 //!
 //! // iterate through tasks
-//! tasks.into_par_iter_synced(move |task_number| {
+//! tasks.into_par_iter_sync(move |task_number| {
 //!
 //!     // writes cache (write the integer in cache), in parallel
 //!     cache.lock().unwrap().insert(task_number);
 //!     // return the task number to the next iterator
 //!     Ok(task_number)
 //!
-//! }).into_par_iter_synced(move |task_number| { // <- synced to sequential order
+//! }).into_par_iter_sync(move |task_number| { // <- synced to sequential order
 //!
 //!     // reads
 //!     assert!(cache_clone.lock().unwrap().contains(&task_number));
@@ -53,34 +53,34 @@
 //!
 //! ### Mix Syncing and Parallelism By Chaining
 //! ```
-//! use par_iter_synced::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSynced;
 //!
-//! (0..100).into_par_iter_synced(|i| {
+//! (0..100).into_par_iter_sync(|i| {
 //!     Ok(i)                     // <~ async execution
-//! }).into_par_iter_synced(|i| { // <- sync order
+//! }).into_par_iter_sync(|i| { // <- sync order
 //!     Ok(i)                     // <~async execution
-//! }).into_par_iter_synced(|i| { // <- sync order
+//! }).into_par_iter_sync(|i| { // <- sync order
 //!     Ok(i)                     // <~async execution
 //! });                           // <- sync order
 //! ```
 //!
 //! ### Use `std::iter::IntoIterator` interface
 //! ```
-//! use par_iter_synced::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSynced;
 //!
 //! let mut count = 0;
 //!
 //! // for loop
-//! for i in (0..100).into_par_iter_synced(|i| Ok(i)) {
+//! for i in (0..100).into_par_iter_sync(|i| Ok(i)) {
 //!     assert_eq!(i, count);
 //!     count += 1;
 //! }
 //!
 //! // sum
-//! let sum: i32 = (1..=100).into_par_iter_synced(|i| Ok(i)).sum();
+//! let sum: i32 = (1..=100).into_par_iter_sync(|i| Ok(i)).sum();
 //!
 //! // take and collect
-//! let results: Vec<i32> = (0..10).into_par_iter_synced(|i| Ok(i)).take(5).collect();
+//! let results: Vec<i32> = (0..10).into_par_iter_sync(|i| Ok(i)).take(5).collect();
 //!
 //! assert_eq!(sum, 5050);
 //! assert_eq!(results, vec![0, 1, 2, 3, 4])
@@ -89,14 +89,14 @@
 //! ### Closure Captures Variables
 //! Variables captured are cloned to each threads automatically.
 //! ```
-//! use par_iter_synced::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSynced;
 //! use std::sync::Arc;
 //!
 //! // use `Arc` to save RAM
 //! let resource_captured = Arc::new(vec![3, 1, 4, 1, 5, 9, 2, 6, 5, 3]);
 //! let len = resource_captured.len();
 //!
-//! let result_iter = (0..len).into_par_iter_synced(move |i| {
+//! let result_iter = (0..len).into_par_iter_sync(move |i| {
 //!     // `resource_captured` is moved into the closure
 //!     // and cloned to worker threads.
 //!     let read_from_resource = resource_captured.get(i).unwrap();
@@ -111,7 +111,7 @@
 //! ### Fast Fail During Exception
 //! The iterator stops once the inner function returns an `Err`.
 //! ```
-//! use par_iter_synced::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSynced;
 //! use std::sync::Arc;
 //! use log::warn;
 //!
@@ -126,12 +126,12 @@
 //!     }
 //! }
 //!
-//! let results: Vec<i32> = (0..10000).into_par_iter_synced(move |a| {
+//! let results: Vec<i32> = (0..10000).into_par_iter_sync(move |a| {
 //!     Ok(a)
-//! }).into_par_iter_synced(move |a| {
+//! }).into_par_iter_sync(move |a| {
 //!     // error at 1000
 //!     error_at_1000(a)
-//! }).into_par_iter_synced(move |a| {
+//! }).into_par_iter_sync(move |a| {
 //!     Ok(a)
 //! }).collect();
 //!
@@ -142,10 +142,10 @@
 //! #### You may choose to skip error
 //! If you do not want to stop on `Err`, this is a workaround.
 //! ```
-//! use par_iter_synced::IntoParallelIteratorSynced;
+//! use par_iter_sync::IntoParallelIteratorSynced;
 //! use std::sync::Arc;
 //!
-//! let results: Vec<Result<i32, ()>> = (0..5).into_par_iter_synced(move |n| {
+//! let results: Vec<Result<i32, ()>> = (0..5).into_par_iter_sync(move |n| {
 //!     // error at 3, but skip
 //!     if n == 3 {
 //!         Ok(Err(()))
@@ -215,21 +215,21 @@ pub trait IntoParallelIteratorSynced<R, T, TL, F>
     /// ## Example
     ///
     /// ```
-    /// use par_iter_synced::IntoParallelIteratorSynced;
+    /// use par_iter_sync::IntoParallelIteratorSynced;
     ///
     /// let mut count = 0;
     ///
     /// // for loop
-    /// for i in (0..100).into_par_iter_synced(|i| Ok(i)) {
+    /// for i in (0..100).into_par_iter_sync(|i| Ok(i)) {
     ///     assert_eq!(i, count);
     ///     count += 1;
     /// }
     ///
     /// // sum
-    /// let sum: i32 = (1..=100).into_par_iter_synced(|i| Ok(i)).sum();
+    /// let sum: i32 = (1..=100).into_par_iter_sync(|i| Ok(i)).sum();
     ///
     /// // take and collect
-    /// let results: Vec<i32> = (0..10).into_par_iter_synced(|i| Ok(i)).take(5).collect();
+    /// let results: Vec<i32> = (0..10).into_par_iter_sync(|i| Ok(i)).take(5).collect();
     ///
     /// assert_eq!(sum, 5050);
     /// assert_eq!(results, vec![0, 1, 2, 3, 4])
@@ -243,7 +243,7 @@ pub trait IntoParallelIteratorSynced<R, T, TL, F>
     ///
     /// See [crate] module-level doc.
     ///
-     fn into_par_iter_synced(self, func: F) -> ParIter<R>;
+     fn into_par_iter_sync(self, func: F) -> ParIter<R>;
 }
 
 impl<R, T, TL, F> IntoParallelIteratorSynced<R, T, TL, F> for TL
@@ -254,7 +254,7 @@ impl<R, T, TL, F> IntoParallelIteratorSynced<R, T, TL, F> for TL
         <TL as IntoIterator>::IntoIter: Send + 'static,
         R: Send + 'static,
 {
-    fn into_par_iter_synced(self, func: F) -> ParIter<R>
+    fn into_par_iter_sync(self, func: F) -> ParIter<R>
     {
         ParIter::new(self, func)
     }
@@ -474,7 +474,7 @@ mod test_par_iter {
         let results_expected = vec![3, 1, 4, 1];
 
         // if Err(()) is returned, the iterator stops early
-        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_synced(move |a| {
+        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_sync(move |a| {
             let n = resource_captured.get(a).unwrap().to_owned();
             if n == 5 {
                 Err(())
@@ -502,11 +502,11 @@ mod test_par_iter {
         let resource_captured_2 = resource_captured.clone();
         let results_expected: Vec<i32> = (0..1000).collect();
 
-        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_synced(move |a| {
+        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_sync(move |a| {
             Ok(resource_captured.get(a).unwrap().to_owned())
-        }).into_par_iter_synced(move |a| {
+        }).into_par_iter_sync(move |a| {
             error_at_1000(&resource_captured_1, a)
-        }).into_par_iter_synced(move |a| {
+        }).into_par_iter_sync(move |a| {
             Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
         }).collect();
 
@@ -527,11 +527,11 @@ mod test_par_iter {
         let resource_captured_2 = resource_captured.clone();
         let results_expected: Vec<i32> = (0..1000).collect();
 
-        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_synced(move |a| {
+        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_sync(move |a| {
             Ok(resource_captured.get(a).unwrap().to_owned())
-        }).into_par_iter_synced(move |a| {
+        }).into_par_iter_sync(move |a| {
             Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
-        }).into_par_iter_synced(move |a| {
+        }).into_par_iter_sync(move |a| {
             error_at_1000(&resource_captured_1, a)
         }).collect();
 
@@ -552,11 +552,11 @@ mod test_par_iter {
         let resource_captured_2 = resource_captured.clone();
         let results_expected: Vec<i32> = (0..1000).collect();
 
-        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_synced(move |a| {
+        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_sync(move |a| {
             error_at_1000(&resource_captured_1, a as i32)
-        }).into_par_iter_synced(move |a| {
+        }).into_par_iter_sync(move |a| {
             Ok(resource_captured.get(a as usize).unwrap().to_owned())
-        }).into_par_iter_synced(move |a| {
+        }).into_par_iter_sync(move |a| {
             Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
         }).collect();
 
@@ -566,7 +566,7 @@ mod test_par_iter {
     #[test]
     fn test_break() {
         let mut count = 0;
-        for i in (0..20).into_par_iter_synced(|a| Ok(a)) {
+        for i in (0..20).into_par_iter_sync(|a| Ok(a)) {
             if i == 10 {
                 break;
             }

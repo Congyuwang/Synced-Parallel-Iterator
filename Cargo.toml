@@ -1,5 +1,5 @@
 [package]
-name = "par-iter-synced"
+name = "par-iter-sync"
 version = "0.1.0"
 edition = "2018"
 readme = "README.md"
@@ -10,7 +10,7 @@ keywords = ["parallelism", "iterator", "sequential", "synchronization", "concurr
 description = "Parallel Iterator With Sequential Output"
 
 [lib]
-name = "par_iter_synced"
+name = "par_iter_sync"
 crate-type = ["lib"]
 
 [dependencies]
