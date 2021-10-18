@@ -1,0 +1,20 @@
+[package]
+name = "par-iter-synced"
+version = "0.1.0"
+edition = "2018"
+readme = "README.md"
+license-file = "LICENSE.txt"
+homepage = "https://github.com/Congyuwang/Synced-Parallel-Iterator"
+repository = "https://github.com/Congyuwang/Synced-Parallel-Iterator"
+keywords = ["parallelism", "iterator", "sequential", "synchronization", "concurrency"]
+description = "Parallel Iterator With Sequential Output"
+
+[lib]
+name = "par_iter_synced"
+crate-type = ["lib"]
+
+[dependencies]
+num_cpus = "^1.13"
+
+[dev-dependencies]
+log = "^0.4"
