@@ -103,7 +103,6 @@
 //!     .sum();
 //!
 //! assert_eq!(sum, 5050);
-//! assert_eq!(results, vec![0, 1, 2, 3, 4])
 //! ```
 //!
 //! ### Closure Captures Variables
@@ -202,6 +201,9 @@
 //! - Before dropping the structure, stop all producers from fetching tasks,
 //!   flush all remaining tasks, and join all threads..
 //!
+mod iter_async;
+
+pub use iter_async::*;
 use num_cpus;
 use std::iter::Enumerate;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -263,7 +265,7 @@ where
     ///
     /// See [crate] module-level doc.
     ///
-    fn into_par_iter_sync(self, func: F) -> ParIter<R>;
+    fn into_par_iter_sync(self, func: F) -> ParIterSync<R>;
 }
 
 impl<R, T, TL, F> IntoParallelIteratorSync<R, T, TL, F> for TL
@@ -274,13 +276,13 @@ where
     <TL as IntoIterator>::IntoIter: Send + 'static,
     R: Send + 'static,
 {
-    fn into_par_iter_sync(self, func: F) -> ParIter<R> {
-        ParIter::new(self, func)
+    fn into_par_iter_sync(self, func: F) -> ParIterSync<R> {
+        ParIterSync::new(self, func)
     }
 }
 
 /// iterate through blocks according to array index.
-pub struct ParIter<R> {
+pub struct ParIterSync<R> {
     /// Result receivers, one for each worker thread
     receivers: Vec<Receiver<R>>,
     /// Receiver<(task_number, thread)>
@@ -295,7 +297,7 @@ pub struct ParIter<R> {
     is_killed: bool,
 }
 
-impl<R> ParIter<R>
+impl<R> ParIterSync<R>
 where
     R: Send + 'static,
 {
@@ -348,7 +350,7 @@ where
             handles.push(handle);
         }
 
-        ParIter {
+        ParIterSync {
             receivers,
             task_order,
             current: 0,
@@ -359,7 +361,7 @@ where
     }
 }
 
-impl<R> ParIter<R> {
+impl<R> ParIterSync<R> {
     ///
     /// stop workers from fetching new tasks, and flush remaining works
     /// to prevent blocking.
@@ -387,6 +389,7 @@ impl<R> ParIter<R> {
 /// register thread_number and task_number
 /// before releasing tasks lock.
 ///
+#[inline(always)]
 fn get_task<T, TL>(
     tasks: &Arc<Mutex<Enumerate<TL>>>,
     register: &Sender<(usize, usize)>,
@@ -409,7 +412,7 @@ where
     }
 }
 
-impl<R> Iterator for ParIter<R> {
+impl<R> Iterator for ParIterSync<R> {
     type Item = R;
 
     ///
@@ -446,7 +449,7 @@ impl<R> Iterator for ParIter<R> {
     }
 }
 
-impl<R> ParIter<R> {
+impl<R> ParIterSync<R> {
     ///
     /// Join worker threads. This can be only called once.
     /// Otherwise it results in panic.
@@ -459,7 +462,7 @@ impl<R> ParIter<R> {
     }
 }
 
-impl<R> Drop for ParIter<R> {
+impl<R> Drop for ParIterSync<R> {
     ///
     /// Stop worker threads, join the threads.
     ///
@@ -481,9 +484,6 @@ mod test_par_iter {
             Ok(n)
         }
     }
-
-    #[test]
-    fn par_iter() {}
 
     #[test]
     fn par_iter_test_exception() {
