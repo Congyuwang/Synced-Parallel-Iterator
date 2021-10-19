@@ -79,8 +79,28 @@
 //! // sum
 //! let sum: i32 = (1..=100).into_par_iter_sync(|i| Ok(i)).sum();
 //!
-//! // take and collect
-//! let results: Vec<i32> = (0..10).into_par_iter_sync(|i| Ok(i)).take(5).collect();
+//! // skip, take and collect
+//! let results: Vec<i32> = (0..10)
+//!     .into_par_iter_sync(|i| Ok(i))
+//!     .skip(1)
+//!     .take(5)
+//!     .collect();
+//!
+//! assert_eq!(sum, 5050);
+//! assert_eq!(results, vec![1, 2, 3, 4, 5])
+//! ```
+//!
+//! ### Bridge To Rayon
+//! ```
+//! use par_iter_sync::IntoParallelIteratorSync;
+//! use rayon::prelude::*;
+//!
+//! // sum with rayon
+//! let sum: i32 = (1..=100)
+//!     .into_par_iter_sync(|i| Ok(i))
+//!     .par_bridge()    // <- switch to rayon
+//!     .into_par_iter()
+//!     .sum();
 //!
 //! assert_eq!(sum, 5050);
 //! assert_eq!(results, vec![0, 1, 2, 3, 4])
@@ -182,23 +202,23 @@
 //! - Before dropping the structure, stop all producers from fetching tasks,
 //!   flush all remaining tasks, and join all threads..
 //!
+use num_cpus;
 use std::iter::Enumerate;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, sync_channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
-use num_cpus;
 
 const MAX_SIZE_FOR_THREAD: usize = 10;
 
 pub trait IntoParallelIteratorSync<R, T, TL, F>
-    where
-        F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
-        T: Send,
-        TL: Send + IntoIterator<Item = T>,
-        <TL as IntoIterator>::IntoIter: Send + 'static,
-        R: Send,
+where
+    F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
+    T: Send,
+    TL: Send + IntoIterator<Item = T>,
+    <TL as IntoIterator>::IntoIter: Send + 'static,
+    R: Send,
 {
     ///
     /// # Usage
@@ -243,19 +263,18 @@ pub trait IntoParallelIteratorSync<R, T, TL, F>
     ///
     /// See [crate] module-level doc.
     ///
-     fn into_par_iter_sync(self, func: F) -> ParIter<R>;
+    fn into_par_iter_sync(self, func: F) -> ParIter<R>;
 }
 
 impl<R, T, TL, F> IntoParallelIteratorSync<R, T, TL, F> for TL
-    where
-        F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
-        T: Send,
-        TL: Send + IntoIterator<Item = T>,
-        <TL as IntoIterator>::IntoIter: Send + 'static,
-        R: Send + 'static,
+where
+    F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
+    T: Send,
+    TL: Send + IntoIterator<Item = T>,
+    <TL as IntoIterator>::IntoIter: Send + 'static,
+    R: Send + 'static,
 {
-    fn into_par_iter_sync(self, func: F) -> ParIter<R>
-    {
+    fn into_par_iter_sync(self, func: F) -> ParIter<R> {
         ParIter::new(self, func)
     }
 }
@@ -277,18 +296,18 @@ pub struct ParIter<R> {
 }
 
 impl<R> ParIter<R>
-    where
-        R: Send + 'static,
+where
+    R: Send + 'static,
 {
     ///
     /// the worker threads are dispatched in this `new` constructor!
     ///
     pub fn new<T, TL, F>(tasks: TL, task_executor: F) -> Self
-        where
-            F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
-            T: Send,
-            TL: Send + IntoIterator<Item = T>,
-            <TL as IntoIterator>::IntoIter: Send + 'static,
+    where
+        F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
+        T: Send,
+        TL: Send + IntoIterator<Item = T>,
+        <TL as IntoIterator>::IntoIter: Send + 'static,
     {
         let cpus = num_cpus::get();
         let iterator_stopper = Arc::new(AtomicBool::new(false));
@@ -373,9 +392,9 @@ fn get_task<T, TL>(
     register: &Sender<(usize, usize)>,
     thread_number: usize,
 ) -> Option<T>
-    where
-        T: Send,
-        TL: Iterator<Item = T>,
+where
+    T: Send,
+    TL: Iterator<Item = T>,
 {
     // lock task list
     let mut task = tasks.lock().unwrap();
@@ -464,9 +483,7 @@ mod test_par_iter {
     }
 
     #[test]
-    fn par_iter() {
-
-    }
+    fn par_iter() {}
 
     #[test]
     fn par_iter_test_exception() {
@@ -474,14 +491,16 @@ mod test_par_iter {
         let results_expected = vec![3, 1, 4, 1];
 
         // if Err(()) is returned, the iterator stops early
-        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_sync(move |a| {
-            let n = resource_captured.get(a).unwrap().to_owned();
-            if n == 5 {
-                Err(())
-            } else {
-                Ok(n)
-            }
-        }).collect();
+        let results: Vec<i32> = (0..resource_captured.len())
+            .into_par_iter_sync(move |a| {
+                let n = resource_captured.get(a).unwrap().to_owned();
+                if n == 5 {
+                    Err(())
+                } else {
+                    Ok(n)
+                }
+            })
+            .collect();
 
         assert_eq!(results, results_expected)
     }
@@ -502,13 +521,13 @@ mod test_par_iter {
         let resource_captured_2 = resource_captured.clone();
         let results_expected: Vec<i32> = (0..1000).collect();
 
-        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_sync(move |a| {
-            Ok(resource_captured.get(a).unwrap().to_owned())
-        }).into_par_iter_sync(move |a| {
-            error_at_1000(&resource_captured_1, a)
-        }).into_par_iter_sync(move |a| {
-            Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
-        }).collect();
+        let results: Vec<i32> = (0..resource_captured.len())
+            .into_par_iter_sync(move |a| Ok(resource_captured.get(a).unwrap().to_owned()))
+            .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a))
+            .into_par_iter_sync(move |a| {
+                Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
+            })
+            .collect();
 
         assert_eq!(results, results_expected)
     }
@@ -527,13 +546,13 @@ mod test_par_iter {
         let resource_captured_2 = resource_captured.clone();
         let results_expected: Vec<i32> = (0..1000).collect();
 
-        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_sync(move |a| {
-            Ok(resource_captured.get(a).unwrap().to_owned())
-        }).into_par_iter_sync(move |a| {
-            Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
-        }).into_par_iter_sync(move |a| {
-            error_at_1000(&resource_captured_1, a)
-        }).collect();
+        let results: Vec<i32> = (0..resource_captured.len())
+            .into_par_iter_sync(move |a| Ok(resource_captured.get(a).unwrap().to_owned()))
+            .into_par_iter_sync(move |a| {
+                Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
+            })
+            .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a))
+            .collect();
 
         assert_eq!(results, results_expected)
     }
@@ -552,13 +571,13 @@ mod test_par_iter {
         let resource_captured_2 = resource_captured.clone();
         let results_expected: Vec<i32> = (0..1000).collect();
 
-        let results: Vec<i32> = (0..resource_captured.len()).into_par_iter_sync(move |a| {
-            error_at_1000(&resource_captured_1, a as i32)
-        }).into_par_iter_sync(move |a| {
-            Ok(resource_captured.get(a as usize).unwrap().to_owned())
-        }).into_par_iter_sync(move |a| {
-            Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
-        }).collect();
+        let results: Vec<i32> = (0..resource_captured.len())
+            .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a as i32))
+            .into_par_iter_sync(move |a| Ok(resource_captured.get(a as usize).unwrap().to_owned()))
+            .into_par_iter_sync(move |a| {
+                Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
+            })
+            .collect();
 
         assert_eq!(results, results_expected)
     }

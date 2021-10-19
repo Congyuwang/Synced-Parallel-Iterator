@@ -18,3 +18,4 @@ num_cpus = "^1.13"
 
 [dev-dependencies]
 log = "^0.4"
+rayon = "^1.5"
