@@ -212,7 +212,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 
-const MAX_SIZE_FOR_THREAD: usize = 10;
+const MAX_SIZE_FOR_THREAD: usize = 100;
 
 pub trait IntoParallelIteratorSync<R, T, TL, F>
 where
@@ -474,6 +474,7 @@ impl<R> Drop for ParIterSync<R> {
 
 #[cfg(test)]
 mod test_par_iter {
+    use indicatif::ProgressStyle;
     use crate::IntoParallelIteratorSync;
 
     fn error_at_1000(test_vec: &Vec<i32>, a: i32) -> Result<i32, ()> {
@@ -592,5 +593,19 @@ mod test_par_iter {
             count += 1;
         }
         assert_eq!(count, 10)
+    }
+
+    #[test]
+    fn test_overhead() {
+        let bar = indicatif::ProgressBar::new(8774992);
+        bar.set_style(ProgressStyle::default_bar().progress_chars("=>-").template(
+            "[{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos:>10}/{len:10} ({per_sec}, {eta})",
+        ));
+        (0u32..8774992)
+            .into_par_iter_sync(move |i| Ok(i))
+            .enumerate()
+            .filter(|(i, _)| i % 10000 == 0)
+            .for_each(|_| bar.inc(10000));
+        bar.finish();
     }
 }
