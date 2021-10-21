@@ -207,7 +207,7 @@ pub use iter_async::*;
 use num_cpus;
 use std::iter::Enumerate;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, sync_channel, Receiver, Sender};
+use crossbeam::channel::{bounded, unbounded, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -314,12 +314,12 @@ where
         let cpus = num_cpus::get();
         let iterator_stopper = Arc::new(AtomicBool::new(false));
         // worker master
-        let (task_register, task_order) = channel();
+        let (task_register, task_order) = unbounded();
         let tasks = Arc::new(Mutex::new(tasks.into_iter().enumerate()));
         let mut handles = Vec::with_capacity(cpus);
         let mut receivers = Vec::with_capacity(cpus);
         for thread_number in 0..cpus {
-            let (sender, receiver) = sync_channel(MAX_SIZE_FOR_THREAD);
+            let (sender, receiver) = bounded(MAX_SIZE_FOR_THREAD);
             let task = tasks.clone();
             let register = task_register.clone();
             let iterator_stopper = iterator_stopper.clone();
@@ -474,7 +474,6 @@ impl<R> Drop for ParIterSync<R> {
 
 #[cfg(test)]
 mod test_par_iter {
-    use indicatif::ProgressStyle;
     use crate::IntoParallelIteratorSync;
 
     fn error_at_1000(test_vec: &Vec<i32>, a: i32) -> Result<i32, ()> {
@@ -593,19 +592,5 @@ mod test_par_iter {
             count += 1;
         }
         assert_eq!(count, 10)
-    }
-
-    #[test]
-    fn test_overhead() {
-        let bar = indicatif::ProgressBar::new(8774992);
-        bar.set_style(ProgressStyle::default_bar().progress_chars("=>-").template(
-            "[{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos:>10}/{len:10} ({per_sec}, {eta})",
-        ));
-        (0u32..8774992)
-            .into_par_iter_sync(move |i| Ok(i))
-            .enumerate()
-            .filter(|(i, _)| i % 10000 == 0)
-            .for_each(|_| bar.inc(10000));
-        bar.finish();
     }
 }

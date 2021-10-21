@@ -1,17 +1,17 @@
 use crate::MAX_SIZE_FOR_THREAD;
 use num_cpus;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
+use crossbeam::channel;
+use crossbeam::channel::Receiver;
 
 pub trait IntoParallelIteratorAsync<R, T, TL, F>
 where
     F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
-    T: Send,
-    TL: Send + IntoIterator<Item = T>,
-    <TL as IntoIterator>::IntoIter: Send + 'static,
+    T: Send + 'static,
+    TL: Send + IntoIterator<Item = T> + 'static,
     R: Send,
 {
     ///
@@ -23,9 +23,8 @@ where
 impl<R, T, TL, F> IntoParallelIteratorAsync<R, T, TL, F> for TL
 where
     F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
-    T: Send,
-    TL: Send + IntoIterator<Item = T>,
-    <TL as IntoIterator>::IntoIter: Send + 'static,
+    T: Send + 'static,
+    TL: Send + IntoIterator<Item = T> + 'static,
     R: Send + 'static,
 {
     fn into_par_iter_async(self, func: F) -> ParIterAsync<R> {
@@ -55,18 +54,25 @@ where
     pub fn new<T, TL, F>(tasks: TL, task_executor: F) -> Self
     where
         F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
-        T: Send,
-        TL: Send + IntoIterator<Item = T>,
-        <TL as IntoIterator>::IntoIter: Send + 'static,
+        T: Send + 'static,
+        TL: Send + IntoIterator<Item = T> + 'static,
     {
         let cpus = num_cpus::get();
         let iterator_stopper = Arc::new(AtomicBool::new(false));
         // worker master
-        let tasks = Arc::new(Mutex::new(tasks.into_iter()));
-        let mut handles = Vec::with_capacity(cpus);
-        let (sender, receiver) = sync_channel(MAX_SIZE_FOR_THREAD * cpus);
+        let (prepare, task) = channel::bounded(MAX_SIZE_FOR_THREAD * cpus);
+        // prepare tasks
+        let sender_thread = thread::spawn(move || {
+            for t in tasks {
+                if prepare.send(t).is_err() {
+                    break;
+                }
+            }
+        });
+        let mut handles = Vec::with_capacity(cpus + 1);
+        let (sender, receiver) = channel::bounded(MAX_SIZE_FOR_THREAD * cpus);
         for _ in 0..cpus {
-            let task = tasks.clone();
+            let task = task.clone();
             let iterator_stopper = iterator_stopper.clone();
             let task_executor = task_executor.clone();
             let sender = sender.clone();
@@ -94,6 +100,7 @@ where
             });
             handles.push(handle);
         }
+        handles.push(sender_thread);
 
         ParIterAsync {
             receiver,
@@ -132,14 +139,12 @@ impl<R> ParIterAsync<R> {
 /// before releasing tasks lock.
 ///
 #[inline(always)]
-fn get_task<T, TL>(tasks: &Arc<Mutex<TL>>) -> Option<T>
+fn get_task<T>(tasks: &channel::Receiver<T>,) -> Option<T>
 where
     T: Send,
-    TL: Iterator<Item = T>,
 {
     // lock task list
-    let mut task = tasks.lock().unwrap();
-    task.next()
+    tasks.recv().ok()
 }
 
 impl<R> Iterator for ParIterAsync<R> {

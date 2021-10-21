@@ -1,6 +1,6 @@
 [package]
 name = "par-iter-sync"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2018"
 readme = "README.md"
 license-file = "LICENSE.txt"
@@ -15,8 +15,8 @@ crate-type = ["lib"]
 
 [dependencies]
 num_cpus = "^1.13"
+crossbeam = "^0.8"
 
 [dev-dependencies]
 log = "^0.4"
 rayon = "^1.5"
-indicatif = "^0.16"
