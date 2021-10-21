@@ -1,5 +1,7 @@
 # par_iter_sync: Parallel Iterator With Sequential Output
 
+![rust test](https://github.com/Congyuwang/Synced-Parallel-Iterator/actions/workflows/rust.yml/badge.svg)
+
 Crate like `rayon` do not offer synchronization mechanism.
 This crate provides easy mixture of parallelism and synchronization,
 such as executing tasks in concurrency with synchronization in certain steps.
