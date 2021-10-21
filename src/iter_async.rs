@@ -1,11 +1,11 @@
 use crate::MAX_SIZE_FOR_THREAD;
+use crossbeam::channel;
+use crossbeam::channel::Receiver;
 use num_cpus;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
-use crossbeam::channel;
-use crossbeam::channel::Receiver;
 
 pub trait IntoParallelIteratorAsync<R, T, TL, F>
 where
@@ -139,7 +139,7 @@ impl<R> ParIterAsync<R> {
 /// before releasing tasks lock.
 ///
 #[inline(always)]
-fn get_task<T>(tasks: &channel::Receiver<T>,) -> Option<T>
+fn get_task<T>(tasks: &channel::Receiver<T>) -> Option<T>
 where
     T: Send,
 {
@@ -193,8 +193,10 @@ impl<R> Drop for ParIterAsync<R> {
 
 #[cfg(test)]
 mod test_par_iter_async {
+    extern crate test;
     use crate::IntoParallelIteratorAsync;
     use std::collections::HashSet;
+    use test::Bencher;
 
     #[test]
     fn par_iter_test_exception() {
@@ -258,5 +260,14 @@ mod test_par_iter_async {
             count += 1;
         }
         assert_eq!(count, 10)
+    }
+
+    #[bench]
+    fn bench_into_par_iter_async(b: &mut Bencher) {
+        b.iter(|| {
+            (0..1_000_000)
+                .into_par_iter_async(|a| Ok(a))
+                .for_each(|_| {})
+        });
     }
 }

@@ -203,11 +203,11 @@
 //!
 mod iter_async;
 
+use crossbeam::channel::{bounded, unbounded, Receiver, Sender};
 pub use iter_async::*;
 use num_cpus;
 use std::iter::Enumerate;
 use std::sync::atomic::{AtomicBool, Ordering};
-use crossbeam::channel::{bounded, unbounded, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -474,7 +474,9 @@ impl<R> Drop for ParIterSync<R> {
 
 #[cfg(test)]
 mod test_par_iter {
+    extern crate test;
     use crate::IntoParallelIteratorSync;
+    use test::Bencher;
 
     fn error_at_1000(test_vec: &Vec<i32>, a: i32) -> Result<i32, ()> {
         let n = test_vec.get(a as usize).unwrap().to_owned();
@@ -592,5 +594,14 @@ mod test_par_iter {
             count += 1;
         }
         assert_eq!(count, 10)
+    }
+
+    #[bench]
+    fn bench_into_par_iter_sync(b: &mut Bencher) {
+        b.iter(|| {
+            (0..1_000_000)
+                .into_par_iter_sync(|a| Ok(a))
+                .for_each(|_| {})
+        });
     }
 }

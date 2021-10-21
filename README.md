@@ -49,6 +49,44 @@ tasks.into_par_iter_sync(move |task_number| {
 The output order is guaranteed to be the same as the upstream iterator,
 but the execution order is not sequential.
 
+## Overhead Benchmark
+
+Platform: Macbook Air (2015) 8 GB RAM, Intel Core i5, 1.6GHZ (2 Core).
+
+### Result
+
+One million (1,000,000) empty iteration for each run.
+```
+test iter_async::test_par_iter_async::bench_into_par_iter_async ... bench: 125,574,305 ns/iter (+/- 73,066,288)
+test test_par_iter::bench_into_par_iter_sync                    ... bench: 339,214,244 ns/iter (+/- 220,914,336)
+```
+
+Result:
+- Async iterator overhead `125,574,305 / 1,000,000 = 125 ns (+/- 73 ns)`.
+- Sync iterator overhead `125,574,305 / 1,000,000 = 339 ns (+/- 220 ns)`.
+
+### Bench Programs
+
+#### iter_async
+```rust
+    #[bench]
+    fn bench_into_par_iter_async(b: &mut Bencher) {
+        b.iter(|| {
+            (0..1_000_000).into_par_iter_async(|a| Ok(a)).for_each(|_|{})
+        });
+    }
+```
+
+#### iter_sync
+```rust
+    #[bench]
+    fn bench_into_par_iter_sync(b: &mut Bencher) {
+        b.iter(|| {
+            (0..1_000_000).into_par_iter_sync(|a| Ok(a)).for_each(|_|{})
+        });
+    }
+```
+
 ## Examples
 
 ### Mix Syncing and Parallelism By Chaining
