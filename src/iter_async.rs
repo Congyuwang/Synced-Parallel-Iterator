@@ -193,9 +193,11 @@ impl<R> Drop for ParIterAsync<R> {
 
 #[cfg(test)]
 mod test_par_iter_async {
+    #[cfg(feature = "bench")]
     extern crate test;
     use crate::IntoParallelIteratorAsync;
     use std::collections::HashSet;
+    #[cfg(feature = "bench")]
     use test::Bencher;
 
     #[test]
@@ -262,6 +264,7 @@ mod test_par_iter_async {
         assert_eq!(count, 10)
     }
 
+    #[cfg(feature = "bench")]
     #[bench]
     fn bench_into_par_iter_async(b: &mut Bencher) {
         b.iter(|| {

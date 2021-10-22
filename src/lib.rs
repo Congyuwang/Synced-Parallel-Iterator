@@ -479,8 +479,10 @@ impl<R> Drop for ParIterSync<R> {
 
 #[cfg(test)]
 mod test_par_iter {
+    #[cfg(feature = "bench")]
     extern crate test;
     use crate::IntoParallelIteratorSync;
+    #[cfg(feature = "bench")]
     use test::Bencher;
 
     fn error_at_1000(test_vec: &Vec<i32>, a: i32) -> Result<i32, ()> {
@@ -601,6 +603,7 @@ mod test_par_iter {
         assert_eq!(count, 10)
     }
 
+    #[cfg(feature = "bench")]
     #[bench]
     fn bench_into_par_iter_sync(b: &mut Bencher) {
         b.iter(|| {

@@ -20,3 +20,6 @@ crossbeam = "^0.8"
 [dev-dependencies]
 log = "^0.4"
 rayon = "^1.5"
+
+[features]
+bench = []
