@@ -47,6 +47,11 @@ tasks.into_par_iter_sync(move |task_number| {
 }).for_each(|_| ());
 ```
 
+## Usage Caveat
+This crate is designed to clone all resources captured by the closure
+for each thread. To prevent unintended RAM usage, you may wrap
+large data structure using `Arc` (especially vectors of `Clone` objects).
+
 ## Sequential Consistency
 The output order is guaranteed to be the same as the upstream iterator,
 but the execution order is not sequential.
