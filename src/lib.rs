@@ -1,4 +1,4 @@
-#![feature(test)]
+#![cfg_attr(feature = "bench", feature(test))]
 //!
 //! # par_iter_sync: Parallel Iterator With Sequential Output
 //!
