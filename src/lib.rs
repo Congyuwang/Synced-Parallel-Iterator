@@ -181,6 +181,19 @@
 //!
 //! assert_eq!(results, vec![Ok(0), Ok(1), Ok(2), Err(()), Ok(4)])
 //! ```
+//! ## Overhead Benchmark
+//! Platform: Macbook Air (2015 Late) 8 GB RAM, Intel Core i5, 1.6GHZ (2 Core).
+//!
+//! ### Result
+//! One million (1,000,000) empty iteration for each run.
+//! ```text
+//! test iter_async::test_par_iter_async::bench_into_par_iter_async ... bench: 120,003,398 ns/iter (+/- 52,401,527)
+//! test test_par_iter::bench_into_par_iter_sync                    ... bench:  98,472,767 ns/iter (+/- 9,901,593)
+//! ```
+//!
+//! Result:
+//! - Async iterator overhead `120,003,398 / 1,000,000 = 120 ns (+/- 52 ns)`.
+//! - Sync iterator overhead  ` 98,472,767 / 1,000,000 =  98 ns (+/- 10 ns)`.
 //!
 //! ## Implementation Note
 //!
@@ -206,7 +219,7 @@ use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 
-const MAX_SIZE_FOR_THREAD: usize = 10;
+const MAX_SIZE_FOR_THREAD: usize = 100;
 
 ///
 /// lock-free sequential parallel iterator
