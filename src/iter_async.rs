@@ -202,21 +202,23 @@ mod test_par_iter_async {
 
     #[test]
     fn par_iter_test_exception() {
-        let resource_captured = vec![3, 1, 4, 1, 5, 9, 2, 6, 5, 3];
+        for _ in 0..100 {
+            let resource_captured = vec![3, 1, 4, 1, 5, 9, 2, 6, 5, 3];
 
-        // if Err(()) is returned, the iterator stops early
-        let results: HashSet<i32> = (0..resource_captured.len())
-            .into_par_iter_async(move |a| {
-                let n = resource_captured.get(a).unwrap().to_owned();
-                if n == 5 {
-                    Err(())
-                } else {
-                    Ok(n)
-                }
-            })
-            .collect();
+            // if Err(()) is returned, the iterator stops early
+            let results: HashSet<i32> = (0..resource_captured.len())
+                .into_par_iter_async(move |a| {
+                    let n = resource_captured.get(a).unwrap().to_owned();
+                    if n == 5 {
+                        Err(())
+                    } else {
+                        Ok(n)
+                    }
+                })
+                .collect();
 
-        assert!(!results.contains(&5))
+            assert!(!results.contains(&5))
+        }
     }
 
     ///
@@ -230,38 +232,40 @@ mod test_par_iter_async {
     ///
     #[test]
     fn par_iter_chained_exception() {
-        let resource_captured: Vec<i32> = (0..10000).collect();
-        let resource_captured_1 = resource_captured.clone();
-        let resource_captured_2 = resource_captured.clone();
+        for _ in 0..100 {
+            let resource_captured: Vec<i32> = (0..10000).collect();
+            let resource_captured_1 = resource_captured.clone();
+            let resource_captured_2 = resource_captured.clone();
 
-        let results: HashSet<i32> = (0..resource_captured.len())
-            .into_par_iter_async(move |a| Ok(resource_captured.get(a).unwrap().to_owned()))
-            .into_par_iter_async(move |a| {
-                let n = resource_captured_1.get(a as usize).unwrap().to_owned();
-                if n == 1000 {
-                    Err(())
-                } else {
-                    Ok(n)
-                }
-            })
-            .into_par_iter_async(move |a| {
-                Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
-            })
-            .collect();
+            let results: HashSet<i32> = (0..resource_captured.len())
+                .into_par_iter_async(move |a| Ok(resource_captured.get(a).unwrap().to_owned()))
+                .into_par_iter_async(move |a| {
+                    let n = resource_captured_1.get(a as usize).unwrap().to_owned();
+                    if n == 1000 {
+                        Err(())
+                    } else {
+                        Ok(n)
+                    }
+                })
+                .into_par_iter_async(move |a| {
+                    Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
+                })
+                .collect();
 
-        assert!(!results.contains(&1000))
+            assert!(!results.contains(&1000))
+        }
     }
 
     #[test]
+    /// test that the iterator won't deadlock during drop
     fn test_break() {
-        let mut count = 0;
-        for i in (0..20).into_par_iter_async(|a| Ok(a)) {
-            if i == 10 {
-                break;
+        for _ in 0..10000 {
+            for i in (0..2000).into_par_iter_async(|a| Ok(a)) {
+                if i == 1000 {
+                    break;
+                }
             }
-            count += 1;
         }
-        assert_eq!(count, 10)
     }
 
     #[cfg(feature = "bench")]

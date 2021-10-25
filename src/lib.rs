@@ -496,22 +496,24 @@ mod test_par_iter {
 
     #[test]
     fn par_iter_test_exception() {
-        let resource_captured = vec![3, 1, 4, 1, 5, 9, 2, 6, 5, 3];
-        let results_expected = vec![3, 1, 4, 1];
+        for _ in 0..100 {
+            let resource_captured = vec![3, 1, 4, 1, 5, 9, 2, 6, 5, 3];
+            let results_expected = vec![3, 1, 4, 1];
 
-        // if Err(()) is returned, the iterator stops early
-        let results: Vec<i32> = (0..resource_captured.len())
-            .into_par_iter_sync(move |a| {
-                let n = resource_captured.get(a).unwrap().to_owned();
-                if n == 5 {
-                    Err(())
-                } else {
-                    Ok(n)
-                }
-            })
-            .collect();
+            // if Err(()) is returned, the iterator stops early
+            let results: Vec<i32> = (0..resource_captured.len())
+                .into_par_iter_sync(move |a| {
+                    let n = resource_captured.get(a).unwrap().to_owned();
+                    if n == 5 {
+                        Err(())
+                    } else {
+                        Ok(n)
+                    }
+                })
+                .collect();
 
-        assert_eq!(results, results_expected)
+            assert_eq!(results, results_expected)
+        }
     }
 
     ///
@@ -525,20 +527,22 @@ mod test_par_iter {
     ///
     #[test]
     fn par_iter_chained_exception() {
-        let resource_captured: Vec<i32> = (0..10000).collect();
-        let resource_captured_1 = resource_captured.clone();
-        let resource_captured_2 = resource_captured.clone();
-        let results_expected: Vec<i32> = (0..1000).collect();
+        for _ in 0..100 {
+            let resource_captured: Vec<i32> = (0..10000).collect();
+            let resource_captured_1 = resource_captured.clone();
+            let resource_captured_2 = resource_captured.clone();
+            let results_expected: Vec<i32> = (0..1000).collect();
 
-        let results: Vec<i32> = (0..resource_captured.len())
-            .into_par_iter_sync(move |a| Ok(resource_captured.get(a).unwrap().to_owned()))
-            .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a))
-            .into_par_iter_sync(move |a| {
-                Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
-            })
-            .collect();
+            let results: Vec<i32> = (0..resource_captured.len())
+                .into_par_iter_sync(move |a| Ok(resource_captured.get(a).unwrap().to_owned()))
+                .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a))
+                .into_par_iter_sync(move |a| {
+                    Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
+                })
+                .collect();
 
-        assert_eq!(results, results_expected)
+            assert_eq!(results, results_expected)
+        }
     }
 
     ///
@@ -550,20 +554,22 @@ mod test_par_iter {
     ///
     #[test]
     fn par_iter_chained_exception_1() {
-        let resource_captured: Vec<i32> = (0..10000).collect();
-        let resource_captured_1 = resource_captured.clone();
-        let resource_captured_2 = resource_captured.clone();
-        let results_expected: Vec<i32> = (0..1000).collect();
+        for _ in 0..100 {
+            let resource_captured: Vec<i32> = (0..10000).collect();
+            let resource_captured_1 = resource_captured.clone();
+            let resource_captured_2 = resource_captured.clone();
+            let results_expected: Vec<i32> = (0..1000).collect();
 
-        let results: Vec<i32> = (0..resource_captured.len())
-            .into_par_iter_sync(move |a| Ok(resource_captured.get(a).unwrap().to_owned()))
-            .into_par_iter_sync(move |a| {
-                Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
-            })
-            .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a))
-            .collect();
+            let results: Vec<i32> = (0..resource_captured.len())
+                .into_par_iter_sync(move |a| Ok(resource_captured.get(a).unwrap().to_owned()))
+                .into_par_iter_sync(move |a| {
+                    Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
+                })
+                .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a))
+                .collect();
 
-        assert_eq!(results, results_expected)
+            assert_eq!(results, results_expected)
+        }
     }
 
     ///
@@ -575,32 +581,48 @@ mod test_par_iter {
     ///
     #[test]
     fn par_iter_chained_exception_2() {
-        let resource_captured: Vec<i32> = (0..10000).collect();
-        let resource_captured_1 = resource_captured.clone();
-        let resource_captured_2 = resource_captured.clone();
-        let results_expected: Vec<i32> = (0..1000).collect();
+        for _ in 0..100 {
+            let resource_captured: Vec<i32> = (0..10000).collect();
+            let resource_captured_1 = resource_captured.clone();
+            let resource_captured_2 = resource_captured.clone();
+            let results_expected: Vec<i32> = (0..1000).collect();
 
-        let results: Vec<i32> = (0..resource_captured.len())
-            .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a as i32))
-            .into_par_iter_sync(move |a| Ok(resource_captured.get(a as usize).unwrap().to_owned()))
-            .into_par_iter_sync(move |a| {
-                Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
-            })
-            .collect();
+            let results: Vec<i32> = (0..resource_captured.len())
+                .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a as i32))
+                .into_par_iter_sync(move |a| Ok(resource_captured.get(a as usize).unwrap().to_owned()))
+                .into_par_iter_sync(move |a| {
+                    Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
+                })
+                .collect();
 
-        assert_eq!(results, results_expected)
+            assert_eq!(results, results_expected)
+        }
     }
 
     #[test]
     fn test_break() {
-        let mut count = 0;
-        for i in (0..20).into_par_iter_sync(|a| Ok(a)) {
-            if i == 10 {
-                break;
+        for _ in 0..100 {
+            let mut count = 0;
+            for i in (0..20000).into_par_iter_sync(|a| Ok(a)) {
+                if i == 10000 {
+                    break;
+                }
+                count += 1;
             }
-            count += 1;
+            assert_eq!(count, 10000)
         }
-        assert_eq!(count, 10)
+    }
+
+    #[test]
+    fn test_large_iter() {
+        for _ in 0..10 {
+            let mut count = 0;
+            for i in (0..1_000_000).into_par_iter_sync(|i| Ok(i)) {
+                assert_eq!(i, count);
+                count += 1;
+            }
+            assert_eq!(count, 1_000_000)
+        }
     }
 
     #[cfg(feature = "bench")]
