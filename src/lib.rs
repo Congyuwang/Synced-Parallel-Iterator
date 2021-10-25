@@ -200,7 +200,7 @@
 //! ### Output Buffering
 //! - Each worker use a synced single-producer mpsc channel to buffer outputs.
 //!   So, when a thread is waiting for its turn to get polled, it does not
-//!   get blocked. The channel size is hard-coded to 10 for each thread.
+//!   get blocked. The channel size is hard-coded to 100 for each thread.
 //! - The number of threads equals to the number of logical cores.
 //!
 //! ### Synchronization and Exception Handling
