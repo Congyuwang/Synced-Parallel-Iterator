@@ -218,6 +218,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 const MAX_SIZE_FOR_THREAD: usize = 100;
 
@@ -346,6 +347,9 @@ impl TaskRegistry {
                 // if `-1` is read, would continue in the loop
                 if thread_num >= 0 {
                     return Some(thread_num);
+                } else {
+                    // a short sleep before checking again
+                    thread::sleep(Duration::from_nanos(500))
                 }
             // if worker threads are no more active, might return `None`
             } else {
