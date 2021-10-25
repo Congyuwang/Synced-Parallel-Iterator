@@ -1,6 +1,4 @@
-# Lock-free Sequential Parallel Iterator
-
-## par_iter_sync
+# par_iter_sync: Parallel Iterator With Sequential Output
 
 ![rust test](https://github.com/Congyuwang/Synced-Parallel-Iterator/actions/workflows/rust.yml/badge.svg)
 
@@ -63,13 +61,13 @@ Platform: Macbook Air (2015 Late) 8 GB RAM, Intel Core i5, 1.6GHZ (2 Core).
 ### Result
 One million (1,000,000) empty iteration for each run.
 ```
-test iter_async::test_par_iter_async::bench_into_par_iter_async ... bench: 120,003,398 ns/iter (+/- 52,401,527)
-test test_par_iter::bench_into_par_iter_sync                    ... bench:  98,472,767 ns/iter (+/- 9,901,593)
+test iter_async::test_par_iter_async::bench_into_par_iter_async ... bench: 125,574,305 ns/iter (+/- 73,066,288)
+test test_par_iter::bench_into_par_iter_sync                    ... bench: 339,214,244 ns/iter (+/- 220,914,336)
 ```
 
 Result:
-- Async iterator overhead `120,003,398 / 1,000,000 = 120 ns (+/- 52 ns)`.
-- Sync iterator overhead  ` 98,472,767 / 1,000,000 =  98 ns (+/- 10 ns)`.
+- Async iterator overhead `125,574,305 / 1,000,000 = 125 ns (+/- 73 ns)`.
+- Sync iterator overhead `125,574,305 / 1,000,000 = 339 ns (+/- 220 ns)`.
 
 ### Bench Programs
 
@@ -209,7 +207,16 @@ assert_eq!(results, vec![Ok(0), Ok(1), Ok(2), Err(()), Ok(4)])
   get blocked. The channel size is hard-coded to 100 for each thread.
 - The number of threads equals to the number of logical cores.
 
-### Synchronization and Exception Handling
-- When each thread fetch a task, it registers its thread ID and task ID into a registry.
-- When `next()` is called, the consumer fetch from the task registry the next thread ID.
-- `next()` returns None if there is no more task or if some Error occurs.
+### Synchronization Mechanism
+- When each thread fetch a task, it registers its thread ID (`thread_number`)
+  and the task ID (`task_number`) into a mpsc channel.
+- When `next()` is called, the consumer fetch from the task registry
+  (`task_order`) the next thread ID and task ID.
+- If `next()` detect that some thread has not produced result due to exception,
+  it calls `kill()`, which stop threads from fetching new tasks,
+  flush remaining tasks, and joining the worker threads.
+
+### Error handling and Dropping
+- When any exception occurs, stop producers from fetching new task.
+- Before dropping the structure, stop all producers from fetching tasks,
+  flush all remaining tasks, and join all threads.
