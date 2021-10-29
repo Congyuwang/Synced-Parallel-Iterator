@@ -187,13 +187,13 @@
 //! ### Result
 //! One million (1,000,000) empty iteration for each run.
 //! ```text
-//! test iter_async::test_par_iter_async::bench_into_par_iter_async ... bench: 120,003,398 ns/iter (+/- 52,401,527)
-//! test test_par_iter::bench_into_par_iter_sync                    ... bench:  98,472,767 ns/iter (+/- 9,901,593)
+//! test iter_async::test_par_iter_async::bench_into_par_iter_async ... bench: 115,102,179 ns/iter (+/- 53,904,057)
+//! test test_par_iter::bench_into_par_iter_sync                    ... bench:  99,855,868 ns/iter (+/- 15,857,210))
 //! ```
 //!
 //! Result:
-//! - Async iterator overhead `120,003,398 / 1,000,000 = 120 ns (+/- 52 ns)`.
-//! - Sync iterator overhead  ` 98,472,767 / 1,000,000 =  98 ns (+/- 10 ns)`.
+//! - Async iterator overhead `115 ns (+/- 54 ns)`.
+//! - Sync iterator overhead  `100 ns (+/- 15 ns)`.
 //!
 //! ## Implementation Note
 //!
@@ -211,6 +211,7 @@
 mod iter_async;
 
 use crossbeam::channel::{bounded, Receiver};
+use crossbeam::utils::Backoff;
 pub use iter_async::*;
 use num_cpus;
 use std::ops::Deref;
@@ -218,7 +219,6 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Duration;
 
 const MAX_SIZE_FOR_THREAD: usize = 100;
 
@@ -340,6 +340,7 @@ impl TaskRegistry {
     pub(crate) fn lookup(&self, task_id: usize) -> Option<isize> {
         let registry_len = self.len();
         let pos = Self::id_to_key(task_id, registry_len);
+        let backoff = Backoff::new();
         loop {
             // check if worker threads are still active
             if Arc::strong_count(&self.0) > 1 {
@@ -348,8 +349,8 @@ impl TaskRegistry {
                 if thread_num >= 0 {
                     return Some(thread_num);
                 } else {
-                    // a short sleep before checking again
-                    thread::sleep(Duration::from_nanos(500))
+                    // snoop
+                    backoff.snooze();
                 }
             // if worker threads are no more active, might return `None`
             } else {

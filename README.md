@@ -62,14 +62,14 @@ Platform: Macbook Air (2015 Late) 8 GB RAM, Intel Core i5, 1.6GHZ (2 Core).
 
 ### Result
 One million (1,000,000) empty iteration for each run.
-```
-test iter_async::test_par_iter_async::bench_into_par_iter_async ... bench: 120,003,398 ns/iter (+/- 52,401,527)
-test test_par_iter::bench_into_par_iter_sync                    ... bench:  98,472,767 ns/iter (+/- 9,901,593)
+```text
+test iter_async::test_par_iter_async::bench_into_par_iter_async ... bench: 115,102,179 ns/iter (+/- 53,904,057)
+test test_par_iter::bench_into_par_iter_sync                    ... bench:  99,855,868 ns/iter (+/- 15,857,210))
 ```
 
 Result:
-- Async iterator overhead `120,003,398 / 1,000,000 = 120 ns (+/- 52 ns)`.
-- Sync iterator overhead  ` 98,472,767 / 1,000,000 =  98 ns (+/- 10 ns)`.
+- Async iterator overhead `115 ns (+/- 54 ns)`.
+- Sync iterator overhead  `100 ns (+/- 15 ns)`.
 
 ### Bench Programs
 
