@@ -1,7 +1,7 @@
 [package]
 name = "par-iter-sync"
-version = "0.1.8"
-edition = "2018"
+version = "0.1.10"
+edition = "2021"
 readme = "README.md"
 license-file = "LICENSE.txt"
 homepage = "https://github.com/Congyuwang/Synced-Parallel-Iterator"
