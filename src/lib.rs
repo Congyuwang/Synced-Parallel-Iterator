@@ -187,13 +187,16 @@
 //! ### Result
 //! One million (1,000,000) empty iteration for each run.
 //! ```text
-//! test iter_async::test_par_iter_async::bench_into_par_iter_async ... bench: 115,102,179 ns/iter (+/- 53,904,057)
-//! test test_par_iter::bench_into_par_iter_sync                    ... bench:  99,855,868 ns/iter (+/- 15,857,210))
+//! test iter_async::test_par_iter_async::bench_into_par_iter_async
+//!     ... bench: 110,277,577 ns/iter (+/- 28,510,054)
+//!
+//! test test_par_iter::bench_into_par_iter_sync
+//!     ... bench: 121,063,787 ns/iter (+/- 103,787,056)
 //! ```
 //!
 //! Result:
-//! - Async iterator overhead `115 ns (+/- 54 ns)`.
-//! - Sync iterator overhead  `100 ns (+/- 15 ns)`.
+//! - Async iterator overhead `110 ns (+/-  28 ns)`.
+//! - Sync iterator overhead  `121 ns (+/- 103 ns)`.
 //!
 //! ## Implementation Note
 //!
