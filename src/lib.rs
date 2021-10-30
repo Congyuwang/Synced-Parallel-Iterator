@@ -211,6 +211,7 @@
 mod iter_async;
 
 use crossbeam::channel::{bounded, Receiver};
+use crossbeam::sync::{Parker, Unparker};
 use crossbeam::utils::Backoff;
 pub use iter_async::*;
 use num_cpus;
@@ -219,6 +220,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 const MAX_SIZE_FOR_THREAD: usize = 100;
 
@@ -298,17 +300,39 @@ where
 /// `-1` represents the task ID is not yet registered
 /// or the task does not exist.
 ///
-#[derive(Clone)]
-struct TaskRegistry(
+struct TaskRegistry {
     // vector of thread ID
-    Arc<Vec<AtomicIsize>>
-);
+    inner: Arc<Vec<AtomicIsize>>,
+    parkers: Vec<Parker>,
+}
 
 impl Deref for TaskRegistry {
     type Target = Vec<AtomicIsize>;
 
     fn deref(&self) -> &Self::Target {
-        self.0.deref()
+        self.inner.deref()
+    }
+}
+
+/// Write client for Task registry
+struct TaskRegistryWrite {
+    inner: Arc<Vec<AtomicIsize>>,
+    unparkers: Vec<Unparker>
+}
+
+impl Deref for TaskRegistryWrite {
+    type Target = Vec<AtomicIsize>;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.deref()
+    }
+}
+
+impl Drop for TaskRegistryWrite {
+    fn drop(&mut self) {
+        for unparker in &self.unparkers {
+            unparker.unpark();
+        }
     }
 }
 
@@ -321,7 +345,10 @@ impl TaskRegistry {
     /// possibly occur.
     ///
     fn new(size: usize) -> TaskRegistry {
-        TaskRegistry(Arc::new((0..size).map(|_| AtomicIsize::new(-1)).collect()))
+        TaskRegistry {
+            inner: Arc::new((0..size).map(|_| AtomicIsize::new(-1)).collect()),
+            parkers: (0..size).map(|_| Parker::new()).collect()
+        }
     }
 
     ///
@@ -339,18 +366,23 @@ impl TaskRegistry {
     #[inline(always)]
     pub(crate) fn lookup(&self, task_id: usize) -> Option<isize> {
         let registry_len = self.len();
-        let pos = Self::id_to_key(task_id, registry_len);
+        let pos = TaskRegistry::id_to_key(task_id, registry_len);
         let backoff = Backoff::new();
         loop {
             // check if worker threads are still active
-            if Arc::strong_count(&self.0) > 1 {
+            if !self.is_disconnected() {
                 let thread_num = self[pos].swap(-1, Ordering::SeqCst);
                 // if `-1` is read, would continue in the loop
                 if thread_num >= 0 {
                     return Some(thread_num);
                 } else {
-                    // snoop
-                    backoff.snooze();
+                    // snooze
+                    if backoff.is_completed() {
+                        // park but no more than 500 millis
+                        self.parkers[pos].park_timeout(Duration::from_millis(500));
+                    } else {
+                        backoff.snooze();
+                    }
                 }
             // if worker threads are no more active, might return `None`
             } else {
@@ -364,6 +396,26 @@ impl TaskRegistry {
         }
     }
 
+    /// key of task ID in registry
+    #[inline(always)]
+    fn id_to_key(task_id: usize, registry_len: usize) -> usize {
+        task_id % registry_len
+    }
+
+    fn to_write(&self) -> TaskRegistryWrite {
+        TaskRegistryWrite {
+            inner: self.inner.clone(),
+            unparkers: self.parkers.iter().map(|p| p.unparker().clone()).collect(),
+        }
+    }
+
+    #[inline(always)]
+    fn is_disconnected(&self) -> bool {
+        Arc::strong_count(&self.inner) == 1
+    }
+}
+
+impl TaskRegistryWrite {
     ///
     /// When a worker fetches a new task, it calls `register` to tell
     /// the user thread its own thread ID.
@@ -373,16 +425,11 @@ impl TaskRegistry {
     #[inline(always)]
     pub(crate) fn register(&self, task_id: usize, thread_id: isize) {
         let registry_len = self.len();
-        let key = Self::id_to_key(task_id, registry_len);
+        let key = TaskRegistry::id_to_key(task_id, registry_len);
         // never overwrite
         debug_assert_eq!(self[key].load(Ordering::SeqCst), -1);
         self[key].store(thread_id, Ordering::SeqCst);
-    }
-
-    /// key of task ID in registry
-    #[inline(always)]
-    fn id_to_key(task_id: usize, registry_len: usize) -> usize {
-        task_id % registry_len
+        self.unparkers[key].unpark();
     }
 }
 
@@ -446,7 +493,7 @@ where
         for thread_number in 0..cpus as isize {
             let (output_sender, output_receiver) = bounded(MAX_SIZE_FOR_THREAD);
             let task_receiver = task_receiver.clone();
-            let task_registry = task_registry.clone();
+            let task_registry = task_registry.to_write();
             let iterator_stopper = iterator_stopper.clone();
             let task_executor = task_executor.clone();
 
@@ -519,7 +566,7 @@ impl<R> ParIterSync<R> {
 #[inline(always)]
 fn get_task<T>(
     tasks: &Receiver<(T, usize)>,
-    registry: &TaskRegistry,
+    registry: &TaskRegistryWrite,
     thread_number: isize,
 ) -> Option<T>
 where
