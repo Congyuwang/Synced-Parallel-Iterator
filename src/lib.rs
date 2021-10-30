@@ -181,6 +181,22 @@
 //!
 //! assert_eq!(results, vec![Ok(0), Ok(1), Ok(2), Err(()), Ok(4)])
 //! ```
+//! ## Overhead Benchmark
+//! Platform: Macbook Air (2015 Late) 8 GB RAM, Intel Core i5, 1.6GHZ (2 Core).
+//!
+//! ### Result
+//! One million (1,000,000) empty iteration for each run.
+//! ```text
+//! test iter_async::test_par_iter_async::bench_into_par_iter_async
+//!     ... bench: 110,277,577 ns/iter (+/- 28,510,054)
+//!
+//! test test_par_iter::bench_into_par_iter_sync
+//!     ... bench: 121,063,787 ns/iter (+/- 103,787,056)
+//! ```
+//!
+//! Result:
+//! - Async iterator overhead `110 ns (+/-  28 ns)`.
+//! - Sync iterator overhead  `121 ns (+/- 103 ns)`.
 //!
 //! ## Implementation Note
 //!
@@ -206,7 +222,9 @@
 //!
 mod iter_async;
 
-use crossbeam::channel::{bounded, unbounded, Receiver, Sender};
+use crossbeam::channel::{bounded, Receiver};
+use crossbeam::sync::{Parker, Unparker};
+use crossbeam::utils::Backoff;
 pub use iter_async::*;
 use num_cpus;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -283,7 +301,148 @@ where
     }
 }
 
-/// iterate through blocks according to array index.
+///
+/// A lookup table to register and look up corresponding thread id for a task.
+///
+/// `-1` represents the task ID is not yet registered
+/// or the task does not exist.
+///
+struct TaskRegistry {
+    // vector of thread ID
+    inner: Arc<Vec<AtomicIsize>>,
+    parkers: Vec<Parker>,
+}
+
+impl Deref for TaskRegistry {
+    type Target = Vec<AtomicIsize>;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.deref()
+    }
+}
+
+/// Write client for Task registry
+struct TaskRegistryWrite {
+    inner: Arc<Vec<AtomicIsize>>,
+    unparkers: Vec<Unparker>
+}
+
+impl Deref for TaskRegistryWrite {
+    type Target = Vec<AtomicIsize>;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.deref()
+    }
+}
+
+impl Drop for TaskRegistryWrite {
+    fn drop(&mut self) {
+        for unparker in &self.unparkers {
+            unparker.unpark();
+        }
+    }
+}
+
+impl TaskRegistry {
+
+    ///
+    /// Initialize the registry with `-1` to represent an empty registry
+    ///
+    /// The `size` must be (just) big enough to ensure that no key collision would
+    /// possibly occur.
+    ///
+    fn new(size: usize) -> TaskRegistry {
+        TaskRegistry {
+            inner: Arc::new((0..size).map(|_| AtomicIsize::new(-1)).collect()),
+            parkers: (0..size).map(|_| Parker::new()).collect()
+        }
+    }
+
+    ///
+    /// Look up a thread_number of a task and set that slot to `-1`.
+    ///
+    /// This function blocks to wait for a task to be registered,
+    /// unless all worker threads have stopped so that no more new
+    /// task can possibly be registered.
+    ///
+    /// It should block very rarely since task dispatcher is not blocking,
+    /// and is registered immediately after fetching in `get_task`.
+    ///
+    /// returns `None` only when all worker threads have stopped
+    ///
+    #[inline(always)]
+    pub(crate) fn lookup(&self, task_id: usize) -> Option<isize> {
+        let registry_len = self.len();
+        let pos = TaskRegistry::id_to_key(task_id, registry_len);
+        let backoff = Backoff::new();
+        loop {
+            // check if worker threads are still active
+            if !self.is_disconnected() {
+                let thread_num = self[pos].swap(-1, Ordering::SeqCst);
+                // if `-1` is read, would continue in the loop
+                if thread_num >= 0 {
+                    return Some(thread_num);
+                } else {
+                    // snooze
+                    if backoff.is_completed() {
+                        // park but no more than 500 millis
+                        self.parkers[pos].park_timeout(Duration::from_millis(500));
+                    } else {
+                        backoff.snooze();
+                    }
+                }
+            // if worker threads are no more active, might return `None`
+            } else {
+                let thread_num = self[pos].swap(-1, Ordering::SeqCst);
+                return if thread_num >= 0 {
+                    Some(thread_num)
+                } else {
+                    None
+                };
+            }
+        }
+    }
+
+    /// key of task ID in registry
+    #[inline(always)]
+    fn id_to_key(task_id: usize, registry_len: usize) -> usize {
+        task_id % registry_len
+    }
+
+    fn to_write(&self) -> TaskRegistryWrite {
+        TaskRegistryWrite {
+            inner: self.inner.clone(),
+            unparkers: self.parkers.iter().map(|p| p.unparker().clone()).collect(),
+        }
+    }
+
+    #[inline(always)]
+    fn is_disconnected(&self) -> bool {
+        Arc::strong_count(&self.inner) == 1
+    }
+}
+
+impl TaskRegistryWrite {
+    ///
+    /// When a worker fetches a new task, it calls `register` to tell
+    /// the user thread its own thread ID.
+    ///
+    /// register the worker thread number of a task
+    ///
+    #[inline(always)]
+    pub(crate) fn register(&self, task_id: usize, thread_id: isize) {
+        let registry_len = self.len();
+        let key = TaskRegistry::id_to_key(task_id, registry_len);
+        // never overwrite
+        debug_assert_eq!(self[key].load(Ordering::SeqCst), -1);
+        self[key].store(thread_id, Ordering::SeqCst);
+        self.unparkers[key].unpark();
+    }
+}
+
+///
+/// implementation of lock-free sequential parallel iterator
+///
 pub struct ParIterSync<R> {
     /// Result receivers, one for each worker thread
     receivers: Vec<Receiver<R>>,
@@ -313,15 +472,27 @@ where
     {
         let cpus = num_cpus::get();
         let iterator_stopper = Arc::new(AtomicBool::new(false));
-        // worker master
-        let (task_register, task_order) = unbounded();
-        let tasks = Arc::new(Mutex::new(tasks.into_iter()));
-        let mut handles = Vec::with_capacity(cpus);
-        let mut receivers = Vec::with_capacity(cpus);
-        for thread_number in 0..cpus {
-            let (sender, receiver) = bounded(MAX_SIZE_FOR_THREAD);
-            let task = tasks.clone();
-            let register = task_register.clone();
+
+        // `(1 + MAX_SIZE_FOR_THREAD)` * cpus as there might be one more fetching after send blocking
+        let task_registry: TaskRegistry = TaskRegistry::new((1 + MAX_SIZE_FOR_THREAD) * cpus);
+
+        // this thread dispatches tasks to worker threads
+        let (dispatcher, task_receiver) = bounded(MAX_SIZE_FOR_THREAD * cpus);
+        let sender_thread = thread::spawn(move || {
+            for (task_id, t) in tasks.into_iter().enumerate() {
+                if dispatcher.send((t, task_id)).is_err() {
+                    break;
+                }
+            }
+        });
+
+        // spawn worker threads
+        let mut handles = Vec::with_capacity(cpus + 1);
+        let mut output_receivers = Vec::with_capacity(cpus);
+        for thread_number in 0..cpus as isize {
+            let (output_sender, output_receiver) = bounded(MAX_SIZE_FOR_THREAD);
+            let task_receiver = task_receiver.clone();
+            let task_registry = task_registry.to_write();
             let iterator_stopper = iterator_stopper.clone();
             let task_executor = task_executor.clone();
 
@@ -389,10 +560,10 @@ impl<R> ParIterSync<R> {
 /// before releasing tasks lock.
 ///
 #[inline(always)]
-fn get_task<T, TL>(
-    tasks: &Arc<Mutex<TL>>,
-    register: &Sender<usize>,
-    thread_number: usize,
+fn get_task<T>(
+    tasks: &Receiver<(T, usize)>,
+    registry: &TaskRegistryWrite,
+    thread_number: isize,
 ) -> Option<T>
 where
     T: Send,
