@@ -225,7 +225,8 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-const MAX_SIZE_FOR_THREAD: usize = 100;
+const MAX_SIZE_FOR_THREAD: usize = 128;
+const BUFFER_SIZE: usize = 64;
 
 ///
 /// lock-free sequential parallel iterator
@@ -481,7 +482,7 @@ impl<R> ParIterSync<R>
         let task_registry: TaskRegistry = TaskRegistry::new((1 + MAX_SIZE_FOR_THREAD) * cpus);
 
         // this thread dispatches tasks to worker threads
-        let (dispatcher, task_receiver) = bounded(MAX_SIZE_FOR_THREAD * cpus);
+        let (dispatcher, task_receiver) = bounded(BUFFER_SIZE);
         let sender_thread = thread::spawn(move || {
             for (task_id, t) in tasks.into_iter().enumerate() {
                 if dispatcher.send((t, task_id)).is_err() {
