@@ -1,6 +1,4 @@
-# Lock-free Sequential Parallel Iterator
-
-## par_iter_sync
+# par_iter_sync: Parallel Iterator With Sequential Output
 
 ![rust test](https://github.com/Congyuwang/Synced-Parallel-Iterator/actions/workflows/rust.yml/badge.svg)
 
@@ -212,7 +210,16 @@ assert_eq!(results, vec![Ok(0), Ok(1), Ok(2), Err(()), Ok(4)])
   get blocked. The channel size is hard-coded to 100 for each thread.
 - The number of threads equals to the number of logical cores.
 
-### Synchronization and Exception Handling
-- When each thread fetch a task, it registers its thread ID and task ID into a registry.
-- When `next()` is called, the consumer fetch from the task registry the next thread ID.
-- `next()` returns None if there is no more task or if some Error occurs.
+### Synchronization Mechanism
+- When each thread fetch a task, it registers its thread ID (`thread_number`)
+  and the task ID (`task_number`) into a mpsc channel.
+- When `next()` is called, the consumer fetch from the task registry
+  (`task_order`) the next thread ID and task ID.
+- If `next()` detect that some thread has not produced result due to exception,
+  it calls `kill()`, which stop threads from fetching new tasks,
+  flush remaining tasks, and joining the worker threads.
+
+### Error handling and Dropping
+- When any exception occurs, stop producers from fetching new task.
+- Before dropping the structure, stop all producers from fetching tasks,
+  flush all remaining tasks, and join all threads.

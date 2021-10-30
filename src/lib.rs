@@ -206,10 +206,19 @@
 //!   get blocked. The channel size is hard-coded to 100 for each thread.
 //! - The number of threads equals to the number of logical cores.
 //!
-//! ### Synchronization and Exception Handling
-//! - When each thread fetch a task, it registers its thread ID and task ID into a registry.
-//! - When `next()` is called, the consumer fetch from the task registry the next thread ID.
-//! - `next()` returns None if there is no more task or if some Error occurs.
+//! ### Synchronization Mechanism
+//! - When each thread fetch a task, it registers its thread ID (`thread_number`)
+//!   and the task ID (`task_number`) into a mpsc channel.
+//! - When `next()` is called, the consumer fetch from the task registry
+//!   (`task_order`) the next thread ID and task ID.
+//! - If `next()` detect that some thread has not produced result due to exception,
+//!   it calls `kill()`, which stop threads from fetching new tasks,
+//!   flush remaining tasks, and joining the worker threads.
+//!
+//! ### Error handling and Dropping
+//! - When any exception occurs, stop producers from fetching new task.
+//! - Before dropping the structure, stop all producers from fetching tasks,
+//!   flush all remaining tasks, and join all threads..
 //!
 mod iter_async;
 
@@ -218,23 +227,18 @@ use crossbeam::sync::{Parker, Unparker};
 use crossbeam::utils::Backoff;
 pub use iter_async::*;
 use num_cpus;
-use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Duration;
 
 const MAX_SIZE_FOR_THREAD: usize = 100;
 
-///
-/// lock-free sequential parallel iterator
-///
 pub trait IntoParallelIteratorSync<R, T, TL, F>
 where
     F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
-    T: Send + 'static,
-    TL: Send + IntoIterator<Item = T> + 'static,
+    T: Send,
+    TL: Send + IntoIterator<Item = T>,
     <TL as IntoIterator>::IntoIter: Send + 'static,
     R: Send,
 {
@@ -287,8 +291,8 @@ where
 impl<R, T, TL, F> IntoParallelIteratorSync<R, T, TL, F> for TL
 where
     F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
-    T: Send + 'static,
-    TL: Send + IntoIterator<Item = T> + 'static,
+    T: Send,
+    TL: Send + IntoIterator<Item = T>,
     <TL as IntoIterator>::IntoIter: Send + 'static,
     R: Send + 'static,
 {
@@ -440,24 +444,16 @@ impl TaskRegistryWrite {
 /// implementation of lock-free sequential parallel iterator
 ///
 pub struct ParIterSync<R> {
-
     /// Result receivers, one for each worker thread
-    output_receivers: Vec<Receiver<R>>,
-
-    /// Lookup table to register worker thread number corresponding to tasks
-    task_registry: TaskRegistry,
-
+    receivers: Vec<Receiver<R>>,
+    /// Receiver<thread>
+    task_order: Receiver<usize>,
     /// handles to join worker threads
     worker_thread: Option<Vec<JoinHandle<()>>>,
-
-    /// atomic flag to stop workers from fetching new tasks
+    /// flag to stop workers from fetching new tasks
     iterator_stopper: Arc<AtomicBool>,
-
-    /// if this is `true`, it must guarantee that all worker threads have stopped
+    /// indicate that workers have all been killed
     is_killed: bool,
-
-    /// current task id
-    current: usize,
 }
 
 impl<R> ParIterSync<R>
@@ -470,8 +466,8 @@ where
     pub fn new<T, TL, F>(tasks: TL, task_executor: F) -> Self
     where
         F: Send + Clone + 'static + Fn(T) -> Result<R, ()>,
-        T: Send + 'static,
-        TL: Send + IntoIterator<Item = T> + 'static,
+        T: Send,
+        TL: Send + IntoIterator<Item = T>,
         <TL as IntoIterator>::IntoIter: Send + 'static,
     {
         let cpus = num_cpus::get();
@@ -503,21 +499,17 @@ where
             // workers
             let handle = thread::spawn(move || {
                 loop {
-                    // check stopper flag
                     if iterator_stopper.load(Ordering::SeqCst) {
                         break;
                     }
-                    //  fetch task and register thread number
-                    match get_task(&task_receiver, &task_registry, thread_number) {
-                        // stop if no more task
+                    match get_task(&task, &register, thread_number) {
+                        // finish
                         None => break,
                         Some(task) => match task_executor(task) {
                             Ok(blk) => {
-                                // send output
-                                output_sender.send(blk).unwrap();
+                                sender.send(blk).unwrap();
                             }
                             Err(_) => {
-                                // stop other thread when Error is returned
                                 iterator_stopper.fetch_or(true, Ordering::SeqCst);
                                 break;
                             }
@@ -525,34 +517,36 @@ where
                     }
                 }
             });
-            output_receivers.push(output_receiver);
+            receivers.push(receiver);
             handles.push(handle);
         }
-        handles.push(sender_thread);
 
         ParIterSync {
-            output_receivers,
-            task_registry,
+            receivers,
+            task_order,
             worker_thread: Some(handles),
             iterator_stopper,
             is_killed: false,
-            current: 0,
         }
     }
 }
 
 impl<R> ParIterSync<R> {
     ///
-    /// - stop workers from fetching new tasks
-    /// - pull one result from each worker to prevent `send` blocking
+    /// stop workers from fetching new tasks, and flush remaining works
+    /// to prevent blocking.
     ///
     pub fn kill(&mut self) {
         if !self.is_killed {
             // stop threads from getting new tasks
             self.iterator_stopper.fetch_or(true, Ordering::SeqCst);
-            // receive one for each channel to prevent blocking
-            for receiver in &self.output_receivers {
-                let _ = receiver.try_recv();
+            // flush the remaining tasks in the channel
+            loop {
+                let _ = match self.task_order.recv() {
+                    Ok(thread_number) => self.receivers.get(thread_number).unwrap().recv(),
+                    // all workers have stopped
+                    Err(_) => break,
+                };
             }
             // loop break only when task_order is dropped (all workers have stopped)
             self.is_killed = true;
@@ -561,10 +555,9 @@ impl<R> ParIterSync<R> {
 }
 
 ///
-/// A helper function to receive task from task receiver.
-/// - it also registers thread ID into task registry immediately.
-///
-/// It guarantees to return None if and only if there is no more new task.
+/// A helper function that locks tasks,
+/// register thread_number and task_number
+/// before releasing tasks lock.
 ///
 #[inline(always)]
 fn get_task<T>(
@@ -574,16 +567,18 @@ fn get_task<T>(
 ) -> Option<T>
 where
     T: Send,
+    TL: Iterator<Item = T>,
 {
     // lock task list
-    // let mut task = tasks.lock().unwrap();
-    // registry task stealing
-    match tasks.recv() {
-        Ok((task, task_id)) => {
-            registry.register(task_id, thread_number);
+    let mut task = tasks.lock().unwrap();
+    let next_task = task.next();
+    // register task stealing
+    match next_task {
+        Some(task) => {
+            register.send(thread_number).unwrap();
             Some(task)
         }
-        Err(_) => None,
+        None => None,
     }
 }
 
@@ -597,15 +592,10 @@ impl<R> Iterator for ParIterSync<R> {
         if self.is_killed {
             return None;
         }
-
-        // look up which thread to fetch result from
-        match self.task_registry.lookup(self.current) {
-            // no more task
-            None => None,
-            Some(thread_num) => {
-                match self.output_receivers[thread_num as usize].recv() {
+        match self.task_order.recv() {
+            Ok(thread_number) => {
+                match self.receivers.get(thread_number).unwrap().recv() {
                     Ok(block) => {
-                        self.current += 1;
                         Some(block)
                     }
                     // some worker have stopped
@@ -615,6 +605,8 @@ impl<R> Iterator for ParIterSync<R> {
                     }
                 }
             }
+            // all workers have stopped
+            Err(_) => None,
         }
     }
 }
@@ -754,9 +746,7 @@ mod test_par_iter {
 
             let results: Vec<i32> = (0..resource_captured.len())
                 .into_par_iter_sync(move |a| error_at_1000(&resource_captured_1, a as i32))
-                .into_par_iter_sync(move |a| {
-                    Ok(resource_captured.get(a as usize).unwrap().to_owned())
-                })
+                .into_par_iter_sync(move |a| Ok(resource_captured.get(a as usize).unwrap().to_owned()))
                 .into_par_iter_sync(move |a| {
                     Ok(resource_captured_2.get(a as usize).unwrap().to_owned())
                 })
