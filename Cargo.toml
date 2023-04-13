@@ -1,6 +1,6 @@
 [package]
 name = "par-iter-sync"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 readme = "README.md"
 license-file = "LICENSE.txt"
